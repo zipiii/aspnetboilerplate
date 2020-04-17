@@ -1,9 +1,9 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <Import Project="..\..\common.props" />
 
   <PropertyGroup>
-    <TargetFrameworks>net46;netstandard1.6</TargetFrameworks>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AssemblyName>Abp.ZeroCore</AssemblyName>
     <PackageId>Abp.ZeroCore</PackageId>
@@ -14,6 +14,10 @@
     <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
     <GenerateAssemblyProductAttribute>false</GenerateAssemblyProductAttribute>
     <GenerateAssemblyCopyrightAttribute>false</GenerateAssemblyCopyrightAttribute>
+    <IsPackable>true</IsPackable>
+    <RootNamespace>Abp</RootNamespace>
+    <Description>Abp.ZeroCore</Description>
+    <OutputType>Library</OutputType>
     <RootNamespace>Abp</RootNamespace>
   </PropertyGroup>
 
@@ -22,27 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="bin\Release\net46\Abp.ZeroCore.pdb">
-      <PackagePath>lib/net46/</PackagePath>
-      <Pack>true</Pack>
-    </None>
-    <None Include="bin\Release\netstandard1.6\Abp.ZeroCore.pdb">
-      <PackagePath>lib/netstandard1.6/</PackagePath>
-      <Pack>true</Pack>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Identity" Version="1.1.2" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\Abp.Zero.Common\Abp.Zero.Common.csproj" />
-  </ItemGroup>
-
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net46' ">
-    <Reference Include="System.ComponentModel.DataAnnotations" />
-    <Reference Include="System.Transactions" />
   </ItemGroup>
 
 </Project>

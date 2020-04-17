@@ -2,11 +2,12 @@
 using System.Collections.Generic;
 using System.Data.Common;
 using System.Threading.Tasks;
-using Abp.TestBase.SampleApplication.ContacLists;
+using Abp.TestBase.SampleApplication.ContactLists;
 using Abp.TestBase.SampleApplication.Crm;
 using Abp.TestBase.SampleApplication.EntityFramework;
 using Abp.TestBase.SampleApplication.Messages;
 using Abp.TestBase.SampleApplication.People;
+using Abp.Threading;
 using Castle.MicroKernel.Registration;
 using EntityFramework.DynamicFilters;
 
@@ -113,15 +114,15 @@ namespace Abp.TestBase.SampleApplication.Tests
             UsingDbContext(
               context =>
               {
-                  AddCompany(context, 
+                  AddCompany(context,
                       "Volosoft",
                       "Turkey",
-                      "Istanbul", 
-                      "Denizkoskler Mah. Avcilar", 
+                      "Istanbul",
+                      "Denizkoskler Mah. Avcilar",
                       "Halil",
                       "Gumuspala Mah. Avcilar",
-                      "Ismail", 
-                      "Headquarter", 
+                      "Ismail",
+                      "Headquarter",
                       "Europe Headquarter");
 
                   AddCompany(context,
@@ -137,9 +138,9 @@ namespace Abp.TestBase.SampleApplication.Tests
               });
         }
 
-        private void AddCompany(SampleApplicationDbContext context,string name,string country, string city, string address1, string modifier1, string address2, string modifier2, string branchName1, string branchName2)
+        private void AddCompany(SampleApplicationDbContext context, string name, string country, string city, string address1, string modifier1, string address2, string modifier2, string branchName1, string branchName2)
         {
-            context.Companies.Add(new Company
+            var company = new Company
             {
                 Name = name,
                 CreationTime = new DateTime(2017, 03, 16, 0, 0, 0, DateTimeKind.Utc),
@@ -168,21 +169,23 @@ namespace Abp.TestBase.SampleApplication.Tests
                     }
                 },
                 Branches = new List<Branch>
-                      {
-                          new Branch
-                          {
-                              Name = branchName1,
-                              CreationTime = new DateTime(2017, 03, 16, 0, 0, 0, DateTimeKind.Local),
-                          },
-                          new Branch()
-                          {
-                              Name = branchName2,
-                              CreationTime = new DateTime(2017, 03, 16, 0, 0, 0, DateTimeKind.Utc)
-                          }
-                      }
-            });
+                {
+                    new Branch
+                    {
+                        Name = branchName1,
+                        CreationTime = new DateTime(2017, 03, 16, 0, 0, 0, DateTimeKind.Local),
+                    },
+                    new Branch
+                    {
+                        Name = branchName2,
+                        CreationTime = new DateTime(2017, 03, 16, 0, 0, 0, DateTimeKind.Utc)
+                    }
+                }
+            };
+
+            context.Companies.Add(company);
         }
-        
+
         public void UsingDbContext(Action<SampleApplicationDbContext> action)
         {
             using (var context = LocalIocManager.Resolve<SampleApplicationDbContext>())

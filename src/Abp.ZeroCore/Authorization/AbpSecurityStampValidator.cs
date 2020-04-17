@@ -3,9 +3,10 @@ using Abp.Authorization.Roles;
 using Abp.Authorization.Users;
 using Abp.Domain.Uow;
 using Abp.MultiTenancy;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Abp.Authorization
@@ -16,11 +17,15 @@ namespace Abp.Authorization
         where TUser : AbpUser<TUser>
     {
         public AbpSecurityStampValidator(
-            IOptions<IdentityOptions> options,
-            AbpSignInManager<TTenant, TRole, TUser> signInManager)
+            IOptions<SecurityStampValidatorOptions> options,
+            AbpSignInManager<TTenant, TRole, TUser> signInManager,
+            ISystemClock systemClock,
+            ILoggerFactory loggerFactory)
             : base(
-                  options, 
-                  signInManager)
+                options, 
+                signInManager,
+                systemClock,
+                loggerFactory)
         {
         }
 

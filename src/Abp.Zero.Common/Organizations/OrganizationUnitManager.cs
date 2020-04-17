@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Abp.Domain.Repositories;
 using Abp.Domain.Services;
 using Abp.Domain.Uow;
+using Abp.Linq;
 using Abp.UI;
 using Abp.Zero;
 
@@ -16,11 +17,14 @@ namespace Abp.Organizations
     {
         protected IRepository<OrganizationUnit, long> OrganizationUnitRepository { get; private set; }
 
+        public IAsyncQueryableExecuter AsyncQueryableExecuter { get; set; }
+        
         public OrganizationUnitManager(IRepository<OrganizationUnit, long> organizationUnitRepository)
         {
             OrganizationUnitRepository = organizationUnitRepository;
 
             LocalizationSourceName = AbpZeroConsts.LocalizationSourceName;
+            AsyncQueryableExecuter = NullAsyncQueryableExecuter.Instance;
         }
 
         [UnitOfWork]
@@ -31,10 +35,24 @@ namespace Abp.Organizations
             await OrganizationUnitRepository.InsertAsync(organizationUnit);
         }
 
+        [UnitOfWork]
+        public virtual void Create(OrganizationUnit organizationUnit)
+        {
+            organizationUnit.Code = GetNextChildCode(organizationUnit.ParentId);
+            ValidateOrganizationUnit(organizationUnit);
+            OrganizationUnitRepository.Insert(organizationUnit);
+        }
+
         public virtual async Task UpdateAsync(OrganizationUnit organizationUnit)
         {
             await ValidateOrganizationUnitAsync(organizationUnit);
             await OrganizationUnitRepository.UpdateAsync(organizationUnit);
+        }
+
+        public virtual void Update(OrganizationUnit organizationUnit)
+        {
+            ValidateOrganizationUnit(organizationUnit);
+            OrganizationUnitRepository.Update(organizationUnit);
         }
 
         public virtual async Task<string> GetNextChildCodeAsync(long? parentId)
@@ -49,15 +67,42 @@ namespace Abp.Organizations
             return OrganizationUnit.CalculateNextCode(lastChild.Code);
         }
 
+        public virtual string GetNextChildCode(long? parentId)
+        {
+            var lastChild = GetLastChildOrNull(parentId);
+            if (lastChild == null)
+            {
+                var parentCode = parentId != null ? GetCode(parentId.Value) : null;
+                return OrganizationUnit.AppendCode(parentCode, OrganizationUnit.CreateCode(1));
+            }
+
+            return OrganizationUnit.CalculateNextCode(lastChild.Code);
+        }
+
         public virtual async Task<OrganizationUnit> GetLastChildOrNullAsync(long? parentId)
         {
-            var children = await OrganizationUnitRepository.GetAllListAsync(ou => ou.ParentId == parentId);
-            return children.OrderBy(c => c.Code).LastOrDefault();
+            var query = OrganizationUnitRepository.GetAll()
+                .Where(ou => ou.ParentId == parentId)
+                .OrderByDescending(ou => ou.Code);
+            return await AsyncQueryableExecuter.FirstOrDefaultAsync(query);
+        }
+
+        public virtual OrganizationUnit GetLastChildOrNull(long? parentId)
+        {
+            var query = OrganizationUnitRepository.GetAll()
+                .Where(ou => ou.ParentId == parentId)
+                .OrderByDescending(ou => ou.Code);
+            return query.FirstOrDefault();
         }
 
         public virtual async Task<string> GetCodeAsync(long id)
         {
             return (await OrganizationUnitRepository.GetAsync(id)).Code;
+        }
+
+        public virtual string GetCode(long id)
+        {
+            return (OrganizationUnitRepository.Get(id)).Code;
         }
 
         [UnitOfWork]
@@ -71,6 +116,19 @@ namespace Abp.Organizations
             }
 
             await OrganizationUnitRepository.DeleteAsync(id);
+        }
+
+        [UnitOfWork]
+        public virtual void Delete(long id)
+        {
+            var children = FindChildren(id, true);
+
+            foreach (var child in children)
+            {
+                OrganizationUnitRepository.Delete(child);
+            }
+
+            OrganizationUnitRepository.Delete(id);
         }
 
         [UnitOfWork]
@@ -101,6 +159,34 @@ namespace Abp.Organizations
             }
         }
 
+        [UnitOfWork]
+        public virtual void Move(long id, long? parentId)
+        {
+            var organizationUnit = OrganizationUnitRepository.Get(id);
+            if (organizationUnit.ParentId == parentId)
+            {
+                return;
+            }
+
+            //Should find children before Code change
+            var children = FindChildren(id, true);
+
+            //Store old code of OU
+            var oldCode = organizationUnit.Code;
+
+            //Move OU
+            organizationUnit.Code = GetNextChildCode(parentId);
+            organizationUnit.ParentId = parentId;
+
+            ValidateOrganizationUnit(organizationUnit);
+
+            //Update Children Codes
+            foreach (var child in children)
+            {
+                child.Code = OrganizationUnit.AppendCode(organizationUnit.Code, OrganizationUnit.GetRelativeCode(child.Code, oldCode));
+            }
+        }
+
         public async Task<List<OrganizationUnit>> FindChildrenAsync(long? parentId, bool recursive = false)
         {
             if (!recursive)
@@ -120,9 +206,40 @@ namespace Abp.Organizations
             );
         }
 
+        public List<OrganizationUnit> FindChildren(long? parentId, bool recursive = false)
+        {
+            if (!recursive)
+            {
+                return OrganizationUnitRepository.GetAllList(ou => ou.ParentId == parentId);
+            }
+
+            if (!parentId.HasValue)
+            {
+                return OrganizationUnitRepository.GetAllList();
+            }
+
+            var code = GetCode(parentId.Value);
+
+            return OrganizationUnitRepository.GetAllList(
+                ou => ou.Code.StartsWith(code) && ou.Id != parentId.Value
+            );
+        }
+
         protected virtual async Task ValidateOrganizationUnitAsync(OrganizationUnit organizationUnit)
         {
             var siblings = (await FindChildrenAsync(organizationUnit.ParentId))
+                .Where(ou => ou.Id != organizationUnit.Id)
+                .ToList();
+
+            if (siblings.Any(ou => ou.DisplayName == organizationUnit.DisplayName))
+            {
+                throw new UserFriendlyException(L("OrganizationUnitDuplicateDisplayNameWarning", organizationUnit.DisplayName));
+            }
+        }
+
+        protected virtual void ValidateOrganizationUnit(OrganizationUnit organizationUnit)
+        {
+            var siblings = (FindChildren(organizationUnit.ParentId))
                 .Where(ou => ou.Id != organizationUnit.Id)
                 .ToList();
 

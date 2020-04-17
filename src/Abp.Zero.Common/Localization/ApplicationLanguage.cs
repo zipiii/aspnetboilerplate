@@ -16,7 +16,7 @@ namespace Abp.Localization
         /// <summary>
         /// The maximum name length.
         /// </summary>
-        public const int MaxNameLength = 10;
+        public const int MaxNameLength = 128;
 
         /// <summary>
         /// The maximum display name length.
@@ -56,7 +56,7 @@ namespace Abp.Localization
         /// <summary>
         /// Is this language active. Inactive languages are not get by <see cref="IApplicationLanguageManager"/>.
         /// </summary>
-        public bool IsDisabled { get; set; }
+        public virtual bool IsDisabled { get; set; }
 
         /// <summary>
         /// Creates a new <see cref="ApplicationLanguage"/> object.

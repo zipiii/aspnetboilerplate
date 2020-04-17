@@ -10,6 +10,7 @@ using Abp.Domain.Uow;
 using Abp.EntityFramework.Utils;
 using Abp.Extensions;
 using Abp.MultiTenancy;
+using Abp.Timing;
 using Castle.Core.Internal;
 
 namespace Abp.EntityFramework.Uow
@@ -99,7 +100,7 @@ namespace Abp.EntityFramework.Uow
             }
         }
         
-        public virtual TDbContext GetOrCreateDbContext<TDbContext>(MultiTenancySides? multiTenancySide = null)
+        public virtual TDbContext GetOrCreateDbContext<TDbContext>(MultiTenancySides? multiTenancySide = null, string name = null)
             where TDbContext : DbContext
         {
             var concreteDbContextType = _dbContextTypeMatcher.GetConcreteType(typeof(TDbContext));
@@ -110,6 +111,10 @@ namespace Abp.EntityFramework.Uow
             var connectionString = ResolveConnectionString(connectionStringResolveArgs);
 
             var dbContextKey = concreteDbContextType.FullName + "#" + connectionString;
+            if (name != null)
+            {
+                dbContextKey += "#" + name;
+            }
 
             DbContext dbContext;
             if (!ActiveDbContexts.TryGetValue(dbContextKey, out dbContext))
@@ -123,16 +128,10 @@ namespace Abp.EntityFramework.Uow
                     dbContext = _dbContextResolver.Resolve<TDbContext>(connectionString);
                 }
 
-                if (Options.Timeout.HasValue && !dbContext.Database.CommandTimeout.HasValue)
+                if (dbContext is IShouldInitializeDcontext abpDbContext)
                 {
-                    dbContext.Database.CommandTimeout = Options.Timeout.Value.TotalSeconds.To<int>();
+                    abpDbContext.Initialize(new AbpEfDbContextInitializationContext(this));
                 }
-
-                ((IObjectContextAdapter)dbContext).ObjectContext.ObjectMaterialized += (sender, args) =>
-                {
-                    ObjectContext_ObjectMaterialized(dbContext, args);
-                };
-
                 FilterExecuter.As<IEfUnitOfWorkFilterExecuter>().ApplyCurrentFilters(this, dbContext);
                 
                 ActiveDbContexts[dbContextKey] = dbContext;
@@ -172,19 +171,6 @@ namespace Abp.EntityFramework.Uow
         {
             dbContext.Dispose();
             IocResolver.Release(dbContext);
-        }
-
-        private static void ObjectContext_ObjectMaterialized(DbContext dbContext, ObjectMaterializedEventArgs e)
-        {
-            var entityType = ObjectContext.GetObjectType(e.Entity.GetType());
-
-            dbContext.Configuration.AutoDetectChangesEnabled = false;
-            var previousState = dbContext.Entry(e.Entity).State;
-
-            DateTimePropertyInfoHelper.NormalizeDatePropertyKinds(e.Entity, entityType);
-
-            dbContext.Entry(e.Entity).State = previousState;
-            dbContext.Configuration.AutoDetectChangesEnabled = true;
         }
     }
 }

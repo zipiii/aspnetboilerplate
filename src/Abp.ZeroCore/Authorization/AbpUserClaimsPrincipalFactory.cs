@@ -6,7 +6,6 @@ using Abp.Authorization.Users;
 using Abp.Dependency;
 using Abp.Domain.Uow;
 using Abp.Runtime.Security;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 
@@ -32,7 +31,7 @@ namespace Abp.Authorization
 
             if (user.TenantId.HasValue)
             {
-                principal.Identities.First().AddClaim(new Claim(AbpClaimTypes.TenantId,user.TenantId.ToString()));
+                principal.Identities.First().AddClaim(new Claim(AbpClaimTypes.TenantId, user.TenantId.ToString()));
             }
 
             return principal;

@@ -10,12 +10,11 @@ using Abp.Extensions;
 using Abp.MultiTenancy;
 using Abp.Runtime.Security;
 using Abp.Zero.Configuration;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Authentication;
 
 namespace Abp.Authorization
 {
@@ -34,13 +33,17 @@ namespace Abp.Authorization
             IOptions<IdentityOptions> optionsAccessor,
             ILogger<SignInManager<TUser>> logger,
             IUnitOfWorkManager unitOfWorkManager,
-            ISettingManager settingManager)
+            ISettingManager settingManager,
+            IAuthenticationSchemeProvider schemes,
+            IUserConfirmation<TUser> userConfirmation)
             : base(
                 userManager,
                 contextAccessor,
                 claimsFactory,
                 optionsAccessor,
-                logger)
+                logger,
+                schemes,
+                userConfirmation)
         {
             _unitOfWorkManager = unitOfWorkManager;
             _settingManager = settingManager;
@@ -65,8 +68,8 @@ namespace Abp.Authorization
                         {
                             if (!await IsTwoFactorClientRememberedAsync(loginResult.User) || rememberBrowser == false)
                             {
-                                await Context.Authentication.SignInAsync(
-                                    Options.Cookies.TwoFactorUserIdCookieAuthenticationScheme,
+                                await Context.SignInAsync(
+                                    IdentityConstants.TwoFactorUserIdScheme,
                                     StoreTwoFactorInfo(loginResult.User, loginProvider)
                                 );
 
@@ -78,7 +81,7 @@ namespace Abp.Authorization
 
                 if (loginProvider != null)
                 {
-                    await Context.Authentication.SignOutAsync(Options.Cookies.ExternalCookieAuthenticationScheme);
+                    await Context.SignOutAsync(IdentityConstants.ExternalScheme);
                 }
 
                 await SignInAsync(loginResult.User, isPersistent, loginProvider);
@@ -94,21 +97,21 @@ namespace Abp.Authorization
 
         public virtual async Task SignInAsync(ClaimsIdentity identity, bool isPersistent)
         {
-            await Context.Authentication.SignInAsync(Options.Cookies.ApplicationCookieAuthenticationScheme,
+            await Context.SignInAsync(IdentityConstants.ApplicationScheme,
                 new ClaimsPrincipal(identity),
-                new AuthenticationProperties {IsPersistent = isPersistent}
+                new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = isPersistent }
             );
         }
 
         [UnitOfWork]
-        public override Task SignInAsync(TUser user, AuthenticationProperties authenticationProperties, string authenticationMethod = null)
+        public override Task SignInAsync(TUser user, bool isPersistent, string authenticationMethod = null)
         {
-            return base.SignInAsync(user, authenticationProperties, authenticationMethod);
+            return base.SignInAsync(user, isPersistent, authenticationMethod);
         }
 
         protected virtual ClaimsPrincipal StoreTwoFactorInfo(TUser user, string loginProvider)
         {
-            var identity = new ClaimsIdentity(Options.Cookies.TwoFactorUserIdCookieAuthenticationScheme);
+            var identity = new ClaimsIdentity(IdentityConstants.TwoFactorUserIdScheme);
 
             identity.AddClaim(new Claim(ClaimTypes.Name, user.Id.ToString()));
 
@@ -127,28 +130,28 @@ namespace Abp.Authorization
 
         public async Task<int?> GetVerifiedTenantIdAsync()
         {
-            var principal = await Context.Authentication.AuthenticateAsync(Options.Cookies.TwoFactorUserIdCookieAuthenticationScheme);
+            var result = await Context.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
 
-            if (principal == null)
+            if (result?.Principal == null)
             {
                 return null;
             }
 
-            return AbpZeroClaimsIdentityHelper.GetTenantId(principal);
+            return AbpZeroClaimsIdentityHelper.GetTenantId(result.Principal);
         }
 
         public override async Task<bool> IsTwoFactorClientRememberedAsync(TUser user)
         {
-            var result = await Context.Authentication.AuthenticateAsync(Options.Cookies.TwoFactorRememberMeCookieAuthenticationScheme);
+            var result = await Context.AuthenticateAsync(IdentityConstants.TwoFactorRememberMeScheme);
 
-            return result != null &&
-                   result.FindFirstValue(ClaimTypes.Name) == user.Id.ToString() &&
-                   AbpZeroClaimsIdentityHelper.GetTenantId(result) == user.TenantId;
+            return result?.Principal != null &&
+                   result.Principal.FindFirstValue(ClaimTypes.Name) == user.Id.ToString() &&
+                   AbpZeroClaimsIdentityHelper.GetTenantId(result.Principal) == user.TenantId;
         }
 
         public override async Task RememberTwoFactorClientAsync(TUser user)
         {
-            var rememberBrowserIdentity = new ClaimsIdentity(Options.Cookies.TwoFactorRememberMeCookieAuthenticationScheme);
+            var rememberBrowserIdentity = new ClaimsIdentity(IdentityConstants.TwoFactorRememberMeScheme);
 
             rememberBrowserIdentity.AddClaim(new Claim(ClaimTypes.Name, user.Id.ToString()));
 
@@ -157,9 +160,9 @@ namespace Abp.Authorization
                 rememberBrowserIdentity.AddClaim(new Claim(AbpClaimTypes.TenantId, user.TenantId.Value.ToString()));
             }
 
-            await Context.Authentication.SignInAsync(Options.Cookies.TwoFactorRememberMeCookieAuthenticationScheme,
+            await Context.SignInAsync(IdentityConstants.TwoFactorRememberMeScheme,
                 new ClaimsPrincipal(rememberBrowserIdentity),
-                new AuthenticationProperties { IsPersistent = true });
+                new Microsoft.AspNetCore.Authentication.AuthenticationProperties { IsPersistent = true });
         }
 
         private bool IsTrue(string settingName, int? tenantId)
